@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+if [[ ! -x .venv/bin/python || ! -d frontend/node_modules ]]; then
+  echo 'Install dependencies first; see README.md.' >&2
+  exit 1
+fi
+.venv/bin/python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 &
+api_pid=$!
+(cd frontend && exec node node_modules/vite/bin/vite.js --host 0.0.0.0 --port 5173 --strictPort) &
+web_pid=$!
+cleanup() { kill "$api_pid" "$web_pid" 2>/dev/null || true; }
+trap cleanup EXIT INT TERM
+# macOS ships Bash 3.2, which does not support wait -n.
+while kill -0 "$api_pid" 2>/dev/null && kill -0 "$web_pid" 2>/dev/null; do
+  sleep 1
+done
+if ! kill -0 "$api_pid" 2>/dev/null; then
+  wait "$api_pid"
+else
+  wait "$web_pid"
+fi
